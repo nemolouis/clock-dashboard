@@ -60,7 +60,14 @@
     "clockOnlyMode": "仅显示时钟",
     "compactMode": "紧凑模式",
     "showLunar": "显示农历",
-    "showFestival": "显示节假日"
+    "showFestival": "显示节假日",
+    "wallpaper": "壁纸",
+    "wallpaperEnabled": "启用自定义壁纸",
+    "wallpaperUpload": "上传本地图片",
+    "wallpaperRemove": "移除壁纸",
+    "wallpaperError": "图片无法读取",
+    "wallpaperDim": "遮罩暗度",
+    "wallpaperBlur": "背景模糊"
   },
   "clockSettings": {
     "color": "时钟颜色",

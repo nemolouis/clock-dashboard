@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useIdle, useMagicKeys } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import NewYearEgg from './components/NewYearEgg.vue'
 import SettingsDrawer from './components/SettingsDrawer.vue'
 import WeatherEffects from './components/WeatherEffects.vue'
@@ -9,13 +9,27 @@ import { i18n } from './i18n'
 import { useConfigStore } from './stores/config'
 import { useWeatherStore } from './stores/weather'
 import { isIpadIOS15OrLower } from './utils/device'
+import { loadWallpaper } from './utils/wallpaper'
 import CalendarView from './views/CalendarView.vue'
 import ClockWeatherView from './views/ClockWeatherView.vue'
 import ClockWeatherViewCompact from './views/ClockWeatherViewCompact.vue'
 import SmartHomeView from './views/SmartHomeView.vue'
 
 const configStore = useConfigStore()
-const { showDrawer, layoutConfig } = storeToRefs(configStore)
+const { showDrawer, layoutConfig, wallpaperConfig, wallpaperVersion } = storeToRefs(configStore)
+
+const wallpaperUrl = ref('')
+function revokeWallpaper() {
+  if (wallpaperUrl.value) URL.revokeObjectURL(wallpaperUrl.value)
+  wallpaperUrl.value = ''
+}
+watch([() => wallpaperConfig.value.enabled, wallpaperVersion], async ([enabled]) => {
+  revokeWallpaper()
+  if (!enabled) return
+  const blob = await loadWallpaper()
+  if (blob) wallpaperUrl.value = URL.createObjectURL(blob)
+}, { immediate: true })
+onBeforeUnmount(revokeWallpaper)
 
 const currentPage = ref(1)
 const calendarRef = ref<any>(null)
@@ -143,6 +157,19 @@ watch(language, (nextLocale) => {
     @mouseup="handleMouseUp"
     @click.capture="handleGlobalClick"
   >
+    <!-- Custom Wallpaper -->
+    <template v-if="wallpaperUrl">
+      <div
+        class="absolute inset-0 bg-cover bg-center pointer-events-none"
+        :style="{
+          backgroundImage: `url(${wallpaperUrl})`,
+          filter: wallpaperConfig.blur ? `blur(${wallpaperConfig.blur}px)` : undefined,
+          transform: wallpaperConfig.blur ? 'scale(1.1)' : undefined,
+        }"
+      />
+      <div class="absolute inset-0 bg-black pointer-events-none" :style="{ opacity: wallpaperConfig.dim }" />
+    </template>
+
     <!-- Background Decoration -->
     <template v-if="!isIpadIOS15OrLower()">
       <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-900/10 rounded-full blur-3xl pointer-events-none" />
