@@ -38,6 +38,27 @@ export async function clearWallpaper() {
   await withStore('readwrite', s => s.delete(KEY))
 }
 
+export function isVideoBlob(blob: Blob) {
+  return blob.type.startsWith('video/')
+}
+
+/** 剩余可用存储是否足够容纳该文件（无法估算时放行） */
+export async function hasEnoughStorage(size: number) {
+  try {
+    const { quota, usage } = await navigator.storage.estimate()
+    if (quota == null || usage == null) return true
+    return quota - usage > size * 1.1
+  }
+  catch {
+    return true
+  }
+}
+
+/** 请求浏览器不要自动清理本站数据（尽力而为） */
+export function requestPersistentStorage() {
+  navigator.storage?.persist?.().catch(() => {})
+}
+
 /** 缩放并压缩为 JPEG，避免超大图片占用过多存储与内存 */
 export async function compressImage(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file)

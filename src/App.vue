@@ -9,7 +9,7 @@ import { i18n } from './i18n'
 import { useConfigStore } from './stores/config'
 import { useWeatherStore } from './stores/weather'
 import { isIpadIOS15OrLower } from './utils/device'
-import { loadWallpaper } from './utils/wallpaper'
+import { isVideoBlob, loadWallpaper } from './utils/wallpaper'
 import CalendarView from './views/CalendarView.vue'
 import ClockWeatherView from './views/ClockWeatherView.vue'
 import ClockWeatherViewCompact from './views/ClockWeatherViewCompact.vue'
@@ -19,6 +19,7 @@ const configStore = useConfigStore()
 const { showDrawer, layoutConfig, wallpaperConfig, wallpaperVersion } = storeToRefs(configStore)
 
 const wallpaperUrl = ref('')
+const wallpaperIsVideo = ref(false)
 function revokeWallpaper() {
   if (wallpaperUrl.value) URL.revokeObjectURL(wallpaperUrl.value)
   wallpaperUrl.value = ''
@@ -27,7 +28,9 @@ watch([() => wallpaperConfig.value.enabled, wallpaperVersion], async ([enabled])
   revokeWallpaper()
   if (!enabled) return
   const blob = await loadWallpaper()
-  if (blob) wallpaperUrl.value = URL.createObjectURL(blob)
+  if (!blob) return
+  wallpaperIsVideo.value = isVideoBlob(blob)
+  wallpaperUrl.value = URL.createObjectURL(blob)
 }, { immediate: true })
 onBeforeUnmount(revokeWallpaper)
 
@@ -159,7 +162,22 @@ watch(language, (nextLocale) => {
   >
     <!-- Custom Wallpaper -->
     <template v-if="wallpaperUrl">
+      <video
+        v-if="wallpaperIsVideo"
+        :src="wallpaperUrl"
+        class="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        :style="{
+          filter: wallpaperConfig.blur ? `blur(${wallpaperConfig.blur}px)` : undefined,
+          transform: wallpaperConfig.blur ? 'scale(1.1)' : undefined,
+        }"
+        autoplay
+        muted
+        loop
+        playsinline
+        disablepictureinpicture
+      />
       <div
+        v-else
         class="absolute inset-0 bg-cover bg-center pointer-events-none"
         :style="{
           backgroundImage: `url(${wallpaperUrl})`,

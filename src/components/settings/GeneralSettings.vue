@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
-import { clearWallpaper, compressImage, loadWallpaper, saveWallpaper } from '../../utils/wallpaper'
+import { clearWallpaper, compressImage, hasEnoughStorage, isVideoBlob, loadWallpaper, requestPersistentStorage, saveWallpaper } from '../../utils/wallpaper'
 
 const configStore = useConfigStore()
 const { language, layoutConfig, wallpaperConfig, wallpaperVersion } = storeToRefs(configStore)
@@ -33,11 +33,13 @@ const wallpaperDraft = ref({ ...wallpaperConfig.value })
 const pendingBlob = ref<Blob | null>(null)
 const pendingClear = ref(false)
 const previewUrl = ref('')
-const wallpaperError = ref(false)
+const wallpaperError = ref<'' | 'read' | 'size'>('')
+const previewIsVideo = ref(false)
 
 function setPreview(blob: Blob | null) {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   previewUrl.value = blob ? URL.createObjectURL(blob) : ''
+  previewIsVideo.value = blob ? isVideoBlob(blob) : false
 }
 onBeforeUnmount(() => setPreview(null))
 
@@ -51,15 +53,28 @@ async function onFileChange(e: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  wallpaperError.value = false
+  wallpaperError.value = ''
   try {
-    pendingBlob.value = await compressImage(file)
+    if (file.type.startsWith('video/')) {
+      if (!await hasEnoughStorage(file.size)) {
+        wallpaperError.value = 'size'
+        return
+      }
+      pendingBlob.value = file
+    }
+    else if (file.type.startsWith('image/')) {
+      pendingBlob.value = await compressImage(file)
+    }
+    else {
+      wallpaperError.value = 'read'
+      return
+    }
     pendingClear.value = false
     setPreview(pendingBlob.value)
     wallpaperDraft.value.enabled = true
   }
   catch {
-    wallpaperError.value = true
+    wallpaperError.value = 'read'
   }
 }
 
@@ -71,9 +86,21 @@ function removeWallpaper() {
 }
 
 async function saveWallpaperDraft() {
-  if (pendingBlob.value) await saveWallpaper(pendingBlob.value)
-  else if (pendingClear.value) await clearWallpaper()
-  const changed = pendingBlob.value || pendingClear.value
+  let changed = false
+  try {
+    if (pendingBlob.value) {
+      requestPersistentStorage()
+      await saveWallpaper(pendingBlob.value)
+      changed = true
+    }
+    else if (pendingClear.value) {
+      await clearWallpaper()
+      changed = true
+    }
+  }
+  catch (e) {
+    console.error('Failed to save wallpaper', e)
+  }
   pendingBlob.value = null
   pendingClear.value = false
   wallpaperConfig.value = { ...wallpaperDraft.value }
@@ -90,7 +117,7 @@ function reset() {
   wallpaperDraft.value = { ...wallpaperConfig.value }
   pendingBlob.value = null
   pendingClear.value = false
-  wallpaperError.value = false
+  wallpaperError.value = ''
   loadPreview()
 }
 
@@ -188,22 +215,31 @@ defineExpose({ save, reset })
           <div class="toggle-dot" />
         </div>
       </div>
+      <video
+        v-if="previewUrl && previewIsVideo"
+        :src="previewUrl"
+        class="h-32 w-full rounded-2xl border border-white/10 object-cover"
+        autoplay
+        muted
+        loop
+        playsinline
+      />
       <div
-        v-if="previewUrl"
+        v-else-if="previewUrl"
         class="h-32 rounded-2xl border border-white/10 bg-cover bg-center"
         :style="{ backgroundImage: `url(${previewUrl})` }"
       />
       <div class="flex gap-3">
         <label class="settings-secondary-btn cursor-pointer">
           {{ t('generalSettings.wallpaperUpload') }}
-          <input type="file" accept="image/*" class="hidden" @change="onFileChange">
+          <input type="file" accept="image/*,video/*" class="hidden" @change="onFileChange">
         </label>
         <button v-if="previewUrl" class="settings-secondary-btn" @click="removeWallpaper">
           {{ t('generalSettings.wallpaperRemove') }}
         </button>
       </div>
       <p v-if="wallpaperError" class="text-red-400 text-sm">
-        {{ t('generalSettings.wallpaperError') }}
+        {{ wallpaperError === 'size' ? t('generalSettings.wallpaperTooLarge') : t('generalSettings.wallpaperError') }}
       </p>
       <div>
         <div class="text-white/60 text-sm mb-2">
